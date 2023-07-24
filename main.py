@@ -11,7 +11,6 @@ bot = Bot(BOT_TOKEN)
 dp = Dispatcher(bot, storage=storage)
 db = Database()
 
-
 kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
 start_button_list = [kb_start.add(KeyboardButton("Регістрація як клієнт")),
                      kb_start.add(KeyboardButton("Регістрація як тренер"))]
@@ -23,10 +22,13 @@ HELP_COMMAND = """
 
 
 class TrainerStates(StatesGroup):
+    trainer_name = State()
+    trainer_description = State()
+    trainer_photo = State()
 
-    name = State()
-    description = State()
-    photo = State()
+
+class ClientStates(StatesGroup):
+    client_name = State()
 
 
 @dp.message_handler(commands=["start"])
@@ -39,34 +41,47 @@ async def help_command(message: Message):
     await message.reply(text=HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
 
 
-@dp.message_handler(lambda message: message.text == "Регістрація як тренер")
+@dp.message_handler(lambda message: message.text in ["Регістрація як тренер", "Регістрація як клієнт"])
 async def trainer_registration(message: Message):
-    await message.answer("Введіть будь-ласка ім'я і фамілію.")
-    await TrainerStates.name.set()
+    if message.text == "Регістрація як тренер":
+        await message.answer("Введіть будь-ласка ім'я і фамілію.")
+        await TrainerStates.trainer_name.set()
+    else:
+        await message.answer("Введіть будь-ласка ім'я і фамілію.")
+        await ClientStates.client_name.set()
 
 
-@dp.message_handler(state=TrainerStates.name)
+@dp.message_handler(state=TrainerStates.trainer_name)
 async def load_name(message: Message, state: FSMContext):
     async with state.proxy() as data:
-        data['name'] = message.text
+        data['trainer_name'] = message.text
     await message.answer(
         "Напишіть коротеньке резюме ~ (Стаж роботи 7 років, чепміон України по бодіблдінгу в категорії 100+ кг!)")
     await TrainerStates.next()
 
 
-@dp.message_handler(state=TrainerStates.description)
+@dp.message_handler(state=TrainerStates.trainer_description)
 async def load_description(message: Message, state: FSMContext):
     async with state.proxy() as data:
-        data['description'] = message.text
+        data['trainer_description'] = message.text
     await message.answer("Пришліть своє фото.")
     await TrainerStates.next()
 
 
-@dp.message_handler(content_types=["photo"], state=TrainerStates.photo)
+@dp.message_handler(content_types=["photo"], state=TrainerStates.trainer_photo)
 async def load_photo(message: Message, state: FSMContext):
     async with state.proxy() as data:
-        data['photo'] = message.photo[0].file_id
-    db.add_trainer(data['name'], data['description'], data['photo'])
+        data['trainer_photo'] = message.photo[0].file_id
+    db.add_trainer(data['trainer_name'], data['trainer_description'], data['trainer_photo'])
+    await message.answer("Регістрація пройшла успішно!")
+    await state.finish()
+
+
+@dp.message_handler(state=ClientStates.client_name)
+async def load_client_name(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        data["client_name"] = message.text
+    db.add_client(data["client_name"])
     await message.answer("Регістрація пройшла успішно!")
     await state.finish()
 

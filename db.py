@@ -20,4 +20,9 @@ class Database:
             self.cursor.execute(sql, (trainer_name, description, photo))
         self.connection.commit()
 
+    def add_client(self, client_name):
+        with self.cursor:
+            sql = "INSERT INTO `client` (`client_name`) VALUES(%s)"
+            self.cursor.execute(sql, client_name)
+        self.connection.commit()
 
