@@ -6,14 +6,17 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from db import Database
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-storage = MemoryStorage()
 bot = Bot(BOT_TOKEN)
+storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 db = Database()
 
-kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
-start_button_list = [kb_start.add(KeyboardButton("Регістрація як клієнт")),
-                     kb_start.add(KeyboardButton("Регістрація як тренер"))]
+kb_reg = ReplyKeyboardMarkup(resize_keyboard=True)
+kb_choose_trainer = ReplyKeyboardMarkup(resize_keyboard=True)
+button_dict = {"registration_button": [kb_reg.add(KeyboardButton("Регістрація як клієнт")),
+                                       kb_reg.add(KeyboardButton("Регістрація як тренер"))],
+               "client_button": [kb_choose_trainer.add(KeyboardButton("Подивитись тренерів"))]
+               }
 
 HELP_COMMAND = """
 /start - початок роботи 
@@ -25,6 +28,7 @@ class TrainerStates(StatesGroup):
     trainer_name = State()
     trainer_description = State()
     trainer_photo = State()
+    trainer_schedule = State()
 
 
 class ClientStates(StatesGroup):
@@ -33,7 +37,13 @@ class ClientStates(StatesGroup):
 
 @dp.message_handler(commands=["start"])
 async def start_command(message: Message):
-    await message.answer(text="Будь ласка зарегеструйтесь!", reply_markup=kb_start)
+    data = db.check_role(message.from_user['id'])
+    if data['client']:
+        await message.answer("Виберіть тренера", reply_markup=kb_choose_trainer)
+    elif data['trainer']:
+        pass
+    else:
+        await message.answer(text="Будь ласка зарегеструйтесь!", reply_markup=kb_reg)
 
 
 @dp.message_handler(commands=["help"])
@@ -72,7 +82,16 @@ async def load_description(message: Message, state: FSMContext):
 async def load_photo(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_photo'] = message.photo[0].file_id
-    db.add_trainer(data['trainer_name'], data['trainer_description'], data['trainer_photo'])
+    await message.answer("Напишіть свій щоденний графік роботи. ~ (07:00 - 22:00)")
+    await TrainerStates.next()
+
+
+@dp.message_handler(state=TrainerStates.trainer_schedule)
+async def load_schedule(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['trainer_schedule'] = str(message.text)
+    db.add_trainer(data['trainer_name'], data['trainer_description'], data['trainer_photo'], message.from_user['id'],
+                   'trainer', data["trainer_schedule"])
     await message.answer("Регістрація пройшла успішно!")
     await state.finish()
 
@@ -81,7 +100,7 @@ async def load_photo(message: Message, state: FSMContext):
 async def load_client_name(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data["client_name"] = message.text
-    db.add_client(data["client_name"])
+    db.add_client(message.from_user['id'], data["client_name"], 'client')
     await message.answer("Регістрація пройшла успішно!")
     await state.finish()
 
