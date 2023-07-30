@@ -37,7 +37,7 @@ class ClientStates(StatesGroup):
 
 @dp.message_handler(commands=["start"])
 async def start_command(message: Message):
-    data = db.check_role(message.from_user['id'])
+    data = db.get_role(message.from_user['id'])
     if data['client']:
         await message.answer("Виберіть тренера", reply_markup=kb_choose_trainer)
     elif data['trainer']:
