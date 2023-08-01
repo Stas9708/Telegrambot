@@ -47,7 +47,7 @@ async def help_command(message: Message):
 
 
 @dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"])
-async def trainer_registration(message: Message):
+async def registration(message: Message):
     result = db.get_people(message.from_user['id'])
     if result is None:
         if message.text == "Потренуватись":
