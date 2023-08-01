@@ -11,11 +11,11 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 db = Database()
 
-kb_reg = ReplyKeyboardMarkup(resize_keyboard=True)
+kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_choose_trainer = ReplyKeyboardMarkup(resize_keyboard=True)
-button_dict = {"registration_button": [kb_reg.add(KeyboardButton("Регістрація як клієнт")),
-                                       kb_reg.add(KeyboardButton("Регістрація як тренер"))],
-               "client_button": [kb_choose_trainer.add(KeyboardButton("Подивитись тренерів"))]
+button_dict = {"registration_button": [kb_start.add(KeyboardButton("Потренуватись")),
+                                       kb_start.add(KeyboardButton("Потренувати"))],
+               "client_button": [kb_choose_trainer.add(KeyboardButton("Вибрати тренера"))]
                }
 
 HELP_COMMAND = """
@@ -29,21 +29,16 @@ class TrainerStates(StatesGroup):
     trainer_description = State()
     trainer_photo = State()
     trainer_schedule = State()
+    trainer_price = State()
 
 
-class ClientStates(StatesGroup):
-    client_name = State()
+class PeopleStates(StatesGroup):
+    people_name = State()
 
 
 @dp.message_handler(commands=["start"])
 async def start_command(message: Message):
-    data = db.get_role(message.from_user['id'])
-    if data['client']:
-        await message.answer("Виберіть тренера", reply_markup=kb_choose_trainer)
-    elif data['trainer']:
-        pass
-    else:
-        await message.answer(text="Будь ласка зарегеструйтесь!", reply_markup=kb_reg)
+    await message.answer("Виберіть що забажаєте)", reply_markup=kb_start)
 
 
 @dp.message_handler(commands=["help"])
@@ -51,14 +46,20 @@ async def help_command(message: Message):
     await message.reply(text=HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
 
 
-@dp.message_handler(lambda message: message.text in ["Регістрація як тренер", "Регістрація як клієнт"])
+@dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"])
 async def trainer_registration(message: Message):
-    if message.text == "Регістрація як тренер":
-        await message.answer("Введіть будь-ласка ім'я і фамілію.")
-        await TrainerStates.trainer_name.set()
+    result = db.get_people(message.from_user['id'])
+    if result is None:
+        if message.text == "Потренуватись":
+            await message.answer("Будь-ласка зарегеструйтесь!\nНапишіть своє ім'я та фамілію.", reply_markup=ReplyKeyboardRemove())
+            await PeopleStates.people_name.set()
+        else:
+            await message.answer("Будь-ласка зарегеструйтесь!\nНапишіть своє ім'я та фамілію.", reply_markup=ReplyKeyboardRemove())
+            await TrainerStates.trainer_name.set()
+    elif db.get_trainer(result['id']) == result['id']:
+        await message.answer("")
     else:
-        await message.answer("Введіть будь-ласка ім'я і фамілію.")
-        await ClientStates.client_name.set()
+        await message.answer("", reply_markup=kb_choose_trainer)
 
 
 @dp.message_handler(state=TrainerStates.trainer_name)
@@ -90,17 +91,26 @@ async def load_photo(message: Message, state: FSMContext):
 async def load_schedule(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_schedule'] = str(message.text)
-    db.add_trainer(data['trainer_name'], data['trainer_description'], data['trainer_photo'], message.from_user['id'],
-                   'trainer', data["trainer_schedule"])
+    await message.answer("Напишіть ціну за одне тренування!")
+    await TrainerStates.next()
+
+
+@dp.message_handler(state=TrainerStates.trainer_price)
+async def load_price(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['trainer_price'] = int(message.text)
+    db.add_people(message.from_user['id'], data['trainer_name'])
+    response = db.get_people(message.from_user['id'])
+    db.add_trainer(response['id'], data['trainer_description'], data['trainer_photo'], data['trainer_price'], data['trainer_schedule'])
     await message.answer("Регістрація пройшла успішно!")
     await state.finish()
 
 
-@dp.message_handler(state=ClientStates.client_name)
+@dp.message_handler(state=PeopleStates.people_name)
 async def load_client_name(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data["client_name"] = message.text
-    db.add_client(message.from_user['id'], data["client_name"], 'client')
+    db.add_people(message.from_user['id'], data["client_name"])
     await message.answer("Регістрація пройшла успішно!")
     await state.finish()
 

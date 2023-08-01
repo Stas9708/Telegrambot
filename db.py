@@ -13,30 +13,31 @@ class Database:
             cursorclass=pymysql.cursors.DictCursor
         )
 
-    def add_trainer(self, trainer_name, description, photo, user_id, role, schedule):
+    def get_people(self, user_id):
         with self.connection.cursor() as cursor:
-            sql = "INSERT INTO `trainer` (`trainer_name`, `description`, `photo`, `user_id`, `role`, `schedule`) VALUES(%s, %s, %s, %s, %s, %s)"
-            cursor.execute(sql, (trainer_name, description, photo, user_id, role, schedule))
+            sql = "SELECT `id`, `user_id` FROM `people`"
+            cursor.execute(sql)
+            result = cursor.fetchone()
+
+        return result
+
+    def get_trainer(self, person_id):
+        with self.connection.cursor() as cursor:
+            sql = "SELECT `person_id` FROM `trainers`"
+            cursor.execute(sql)
+            result = cursor.fetchone()
+
+        return result
+
+    def add_people(self, user_id, name):
+        with self.connection.cursor() as cursor:
+            sql = "INSERT INTO `people` (`user_id`, `name`) VALUES(%s, %s)"
+            cursor.execute(sql, (user_id, name))
         self.connection.commit()
 
-    def add_client(self, user_id, client_name, role):
+    def add_trainer(self, person_id, description, photo, price, schedule):
         with self.connection.cursor() as cursor:
-            sql = "INSERT INTO `client` (`user_id`, `name`, `role`) VALUES(%s, %s, %s)"
-            cursor.execute(sql, (user_id, client_name, role))
+            sql = ("INSERT INTO `trainers` (`person_id`, `description`, `photo`, `price`, `schedule`)"
+                   "VALUES(%s, %s, %s, %s, %s)")
+            cursor.execute(sql, (person_id, description, photo, price, schedule))
         self.connection.commit()
-
-    def get_role(self, user_id):
-        with self.connection.cursor() as cursor:
-            sql1 = "SELECT `user_id` FROM `client`"
-            cursor.execute(sql1)
-            client_result = cursor.fetchone()
-
-            sql2 = "SELECT `user_id` FROM `trainer`"
-            cursor.execute(sql2)
-            trainer_result = cursor.fetchone()
-
-            data = {
-                'trainer': trainer_result,
-                'client': client_result
-            }
-        return data
