@@ -17,9 +17,11 @@ class Database:
         with self.connection.cursor() as cursor:
             sql = "SELECT `id`, `user_id` FROM `people`"
             cursor.execute(sql)
-            result = cursor.fetchone()
-
-        return result
+            result = cursor.fetchall()
+        for el in result:
+            if user_id == el['user_id']:
+                return el
+        return None
 
     def get_trainer(self, person_id):
         with self.connection.cursor() as cursor:
@@ -35,9 +37,19 @@ class Database:
             cursor.execute(sql, (user_id, name))
         self.connection.commit()
 
-    def add_trainer(self, person_id, description, photo, price, schedule):
+    def add_trainer(self, person_id: int, description: str, photo: bytes, price: int, schedule: str,
+                    phone_number: str):
         with self.connection.cursor() as cursor:
-            sql = ("INSERT INTO `trainers` (`person_id`, `description`, `photo`, `price`, `schedule`)"
-                   "VALUES(%s, %s, %s, %s, %s)")
-            cursor.execute(sql, (person_id, description, photo, price, schedule))
+            sql = ("INSERT INTO `trainers` (`person_id`, `description`, `photo`, `price`, `schedule`, `phone_number`)"
+                   "VALUES(%s, %s, %s, %s, %s, %s)")
+            cursor.execute(sql, (person_id, description, photo, price, schedule, phone_number))
         self.connection.commit()
+
+    def get_trainers(self):
+        with self.connection.cursor() as cursor:
+            sql = ("SELECT `name`, `description`, `photo`, `price`, `schedule`, `phone_number` FROM `people`"
+                   "LEFT JOIN `trainers` ON people.id = trainers.person_id")
+            cursor.execute(sql)
+            result = cursor.fetchall()
+
+        return result
