@@ -5,6 +5,7 @@ from aiogram import Bot, Dispatcher, executor
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from db import Database
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+import command
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
@@ -17,19 +18,11 @@ kb_next = ReplyKeyboardMarkup(resize_keyboard=True)
 button_dict = {"registration_button": [kb_start.add(KeyboardButton("Потренуватись")),
                                        kb_start.add(KeyboardButton("Потренувати"))],
                "client_button": [kb_choose_trainer.add(KeyboardButton("Вибрати тренера")),
-                                 kb_next.add(KeyboardButton("next ->"))]
+                                 kb_next.add(KeyboardButton("next >")), kb_next.add(KeyboardButton("Подобається"))]
                }
 
-HELP_COMMAND = """
-/start - початок роботи 
-/help - список команд 
-"""
 
-TRAINERS_COMMAND = """
-"""
-
-
-class TrainerStates(StatesGroup):
+class TrainerRegStates(StatesGroup):
     trainer_name = State()
     trainer_description = State()
     trainer_photo = State()
@@ -40,6 +33,10 @@ class TrainerStates(StatesGroup):
 
 class PeopleStates(StatesGroup):
     people_name = State()
+
+
+class TrainerChoiceState(StatesGroup):
+    trainer_info = State()
 
 
 @dp.message_handler(commands=["start"])
@@ -56,7 +53,7 @@ async def start_command(message: Message):
 
 @dp.message_handler(commands=["help"])
 async def help_command(message: Message):
-    await message.reply(text=HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
+    await message.reply(text=command.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"])
@@ -68,51 +65,51 @@ async def registration(message: Message):
     else:
         await message.answer("Будь-ласка зарегеструйтесь!\nНапишіть своє ім'я та прізвище.",
                              reply_markup=ReplyKeyboardRemove())
-        await TrainerStates.trainer_name.set()
+        await TrainerRegStates.trainer_name.set()
 
 
-@dp.message_handler(state=TrainerStates.trainer_name)
+@dp.message_handler(state=TrainerRegStates.trainer_name)
 async def load_name(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_name'] = message.text
     await message.answer(
         "Напишіть коротеньке резюме ~ (Стаж роботи 7 років, чепміон України по бодіблдінгу в категорії 100+ кг!)")
-    await TrainerStates.next()
+    await TrainerRegStates.next()
 
 
-@dp.message_handler(state=TrainerStates.trainer_description)
+@dp.message_handler(state=TrainerRegStates.trainer_description)
 async def load_description(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_description'] = message.text
     await message.answer("Пришліть своє фото.")
-    await TrainerStates.next()
+    await TrainerRegStates.next()
 
 
-@dp.message_handler(content_types=["photo"], state=TrainerStates.trainer_photo)
+@dp.message_handler(content_types=["photo"], state=TrainerRegStates.trainer_photo)
 async def load_photo(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_photo'] = message.photo[-1].file_id
     await message.answer("Напишіть свій щоденний графік роботи. ~ (07:00 - 22:00)")
-    await TrainerStates.next()
+    await TrainerRegStates.next()
 
 
-@dp.message_handler(state=TrainerStates.trainer_schedule)
+@dp.message_handler(state=TrainerRegStates.trainer_schedule)
 async def load_schedule(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_schedule'] = str(message.text)
     await message.answer("Напишіть ціну за одне тренування!")
-    await TrainerStates.next()
+    await TrainerRegStates.next()
 
 
-@dp.message_handler(state=TrainerStates.trainer_price)
+@dp.message_handler(state=TrainerRegStates.trainer_price)
 async def load_price(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_price'] = int(message.text)
     await message.answer("Напишіть свій номер телефону. ~ (0637512980)")
-    await TrainerStates.next()
+    await TrainerRegStates.next()
 
 
-@dp.message_handler(state=TrainerStates.trainer_phone)
+@dp.message_handler(state=TrainerRegStates.trainer_phone)
 async def load_price(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_phone'] = str(message.text)
@@ -134,14 +131,44 @@ async def load_client_name(message: Message, state: FSMContext):
 
 
 @dp.message_handler(lambda message: message.text == "Вибрати тренера")
-async def show_trainers(message: Message):
-    data = db.get_trainers()
-    for el in data:
-        text = (f"Мене звати {el['name']}.\nОсь мої заслуги: {el['description']}!\n Мій щоденний графік роботи:"
-                f" {el['schedule']}.\n Ціна за одне тренування {el['price']} грн, якщо я тобі підходжу звони за номером"
-                f" {el['phone_number']}!")
-        await bot.send_photo(chat_id=message.from_user.id, photo=el['photo'], caption=text,
+async def show_trainer(message: Message, state: FSMContext):
+    await TrainerChoiceState.trainer_info.set()
+    async with state.proxy() as data:
+        data['count'] = 0
+        result = db.get_trainers(data['count'])
+        data['count'] += 1
+        text = (
+            f"Мене звати {result['name']}.\nОсь мої заслуги: {result['description']}!\nМій щоденний графік роботи:"
+            f" {result['schedule']}.\nЦіна одного тренування становить - {result['price']} грн, мій номер телефону - "
+            f"{result['phone_number']}!\nЯкщо вам підходить цей тренер, натисніть 'Подобається'.\n"
+            f"Якщо ви хочете подивитись інших тренерів, натисніть 'next >'.")
+        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=text,
                              reply_markup=kb_next)
+        data['trainer'] = result['person_id']
+        data['schedule'] = result['schedule']
+        data['name'] = result['name']
+
+
+@dp.message_handler(lambda message: message.text == "next >", state=TrainerChoiceState.trainer_info)
+async def trainer_pagination(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        result = db.get_trainers(data['count'])
+        data['count'] += 1
+        text = (
+            f"Мене звати {result['name']}.\nОсь мої заслуги: {result['description']}!\nМій щоденний графік роботи:"
+            f" {result['schedule']}.\nЦіна одного тренування становить - {result['price']} грн, мій номер телефону - "
+            f"{result['phone_number']}!\nЯкщо вам підходить цей тренер, натисніть 'Подобається'.\n"
+            f"Якщо ви хочете подивитись інших тренерів, натисніть 'next >'.")
+        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=text,
+                             reply_markup=kb_next)
+        data['trainer'] = result['person_id']
+        data['schedule'] = result['schedule']
+        data['name'] = result['name']
+
+
+@dp.message_handler(lambda message: message.text == "Подобається", state=TrainerChoiceState.trainer_info)
+async def reg_for_training(message: Message, state: FSMContext):
+    pass
 
 
 if __name__ == "__main__":

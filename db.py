@@ -25,7 +25,9 @@ class Database:
 
     def get_trainer(self, person_id):
         with self.connection.cursor() as cursor:
-            sql = "SELECT `person_id` FROM `trainers`"
+            sql = ("SELECT `person_id`, `name` "
+                   "FROM `trainers` "
+                   "LEFT JOIN `people` ON people.id = trainers.person_id ")
             cursor.execute(sql)
             result = cursor.fetchone()
 
@@ -45,11 +47,20 @@ class Database:
             cursor.execute(sql, (person_id, description, photo, price, schedule, phone_number))
         self.connection.commit()
 
-    def get_trainers(self):
+    def get_trainers(self, offset):
         with self.connection.cursor() as cursor:
-            sql = ("SELECT `name`, `description`, `photo`, `price`, `schedule`, `phone_number` FROM `people`"
-                   "LEFT JOIN `trainers` ON people.id = trainers.person_id")
+            if offset == 0:
+                sql = ("SELECT `person_id`, `name`, `description`, `photo`, `price`, `schedule`, `phone_number` "
+                       "FROM `people` "
+                       "LEFT JOIN `trainers` ON people.id = trainers.person_id")
+            else:
+                sql = (f"SELECT `person_id`, `name`, `description`, `photo`, `price`, `schedule`, `phone_number` "
+                       f"FROM `people` "
+                       f"LEFT JOIN `trainers` ON people.id = trainers.person_id "
+                       f"LIMIT 1 OFFSET {offset}")
             cursor.execute(sql)
-            result = cursor.fetchall()
+            result = cursor.fetchone()
+            return result
 
-        return result
+
+
