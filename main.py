@@ -6,6 +6,8 @@ from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKey
 from db import Database
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 import command
+import json
+import utils
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
@@ -37,6 +39,10 @@ class PeopleStates(StatesGroup):
 
 class TrainerChoiceState(StatesGroup):
     trainer_info = State()
+
+
+def schedule_to_json(person_id, schedule):
+    pass
 
 
 @dp.message_handler(commands=["start"])
@@ -168,7 +174,20 @@ async def trainer_pagination(message: Message, state: FSMContext):
 
 @dp.message_handler(lambda message: message.text == "Подобається", state=TrainerChoiceState.trainer_info)
 async def reg_for_training(message: Message, state: FSMContext):
-    pass
+    days = utils.five_days()
+    kb_days = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb_days.add(*days)
+    async with state.proxy() as data:
+        await message.answer(f"Ви обрали тренера - {data['name']}.\nВиберіть день для тренрування!",
+                             reply_markup=kb_days)
+
+
+@dp.message_handler(lambda message: message.text in utils.five_days(), state=TrainerChoiceState.trainer_info)
+async def timing(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['day'] = message.text
+        time = utils.hours(data['schedule'], data['day'])
+        pass
 
 
 if __name__ == "__main__":

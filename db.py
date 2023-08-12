@@ -25,9 +25,8 @@ class Database:
 
     def get_trainer(self, person_id):
         with self.connection.cursor() as cursor:
-            sql = ("SELECT `person_id`, `name` "
-                   "FROM `trainers` "
-                   "LEFT JOIN `people` ON people.id = trainers.person_id ")
+            sql = ("SELECT `person_id` "
+                   "FROM `trainers` ")
             cursor.execute(sql)
             result = cursor.fetchone()
 
