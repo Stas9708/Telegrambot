@@ -1,27 +1,20 @@
-import pymysql.cursors
+import config
 
 
 class Database:
 
     def __init__(self):
-        self.connection = pymysql.connect(
-            host="127.0.0.1",
-            port=3306,
-            user="root",
-            password="123456",
-            db="telegrambot_db",
-            cursorclass=pymysql.cursors.DictCursor
-        )
+        self.connection = config.DB_CONFIG
 
     def get_people(self, user_id):
         with self.connection.cursor() as cursor:
-            sql = "SELECT `id`, `user_id` FROM `people`"
+            sql = (f"SELECT `id`, `user_id` "
+                   f"FROM `people`"
+                   f"WHERE {user_id} = `user_id`")
             cursor.execute(sql)
-            result = cursor.fetchall()
-        for el in result:
-            if user_id == el['user_id']:
-                return el
-        return None
+            result = cursor.fetchone()
+
+        return result
 
     def get_trainer(self, person_id):
         with self.connection.cursor() as cursor:
@@ -60,6 +53,3 @@ class Database:
             cursor.execute(sql)
             result = cursor.fetchone()
             return result
-
-
-

@@ -2,21 +2,25 @@ from aiogram.dispatcher.filters.state import StatesGroup, State
 from aiogram.dispatcher import FSMContext
 from config import BOT_TOKEN
 from aiogram import Bot, Dispatcher, executor
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import (Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardMarkup,
+                           InlineKeyboardButton, CallbackQuery)
 from db import Database
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-import command
-import json
+import text
 import utils
+import datetime
+
 
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 db = Database()
 
+
 kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_choose_trainer = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_next = ReplyKeyboardMarkup(resize_keyboard=True)
+kb_time = InlineKeyboardMarkup()
 button_dict = {"registration_button": [kb_start.add(KeyboardButton("Потренуватись")),
                                        kb_start.add(KeyboardButton("Потренувати"))],
                "client_button": [kb_choose_trainer.add(KeyboardButton("Вибрати тренера")),
@@ -39,6 +43,7 @@ class PeopleStates(StatesGroup):
 
 class TrainerChoiceState(StatesGroup):
     trainer_info = State()
+    entry_to_db = State()
 
 
 def schedule_to_json(person_id, schedule):
@@ -59,7 +64,7 @@ async def start_command(message: Message):
 
 @dp.message_handler(commands=["help"])
 async def help_command(message: Message):
-    await message.reply(text=command.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
+    await message.reply(text=text.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
 
 
 @dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"])
@@ -143,12 +148,9 @@ async def show_trainer(message: Message, state: FSMContext):
         data['count'] = 0
         result = db.get_trainers(data['count'])
         data['count'] += 1
-        text = (
-            f"Мене звати {result['name']}.\nОсь мої заслуги: {result['description']}!\nМій щоденний графік роботи:"
-            f" {result['schedule']}.\nЦіна одного тренування становить - {result['price']} грн, мій номер телефону - "
-            f"{result['phone_number']}!\nЯкщо вам підходить цей тренер, натисніть 'Подобається'.\n"
-            f"Якщо ви хочете подивитись інших тренерів, натисніть 'next >'.")
-        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=text,
+        desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
+                                               result['price'], result['phone_number'])
+        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
                              reply_markup=kb_next)
         data['trainer'] = result['person_id']
         data['schedule'] = result['schedule']
@@ -160,13 +162,11 @@ async def trainer_pagination(message: Message, state: FSMContext):
     async with state.proxy() as data:
         result = db.get_trainers(data['count'])
         data['count'] += 1
-        text = (
-            f"Мене звати {result['name']}.\nОсь мої заслуги: {result['description']}!\nМій щоденний графік роботи:"
-            f" {result['schedule']}.\nЦіна одного тренування становить - {result['price']} грн, мій номер телефону - "
-            f"{result['phone_number']}!\nЯкщо вам підходить цей тренер, натисніть 'Подобається'.\n"
-            f"Якщо ви хочете подивитись інших тренерів, натисніть 'next >'.")
-        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=text,
+        desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
+                                               result['price'], result['phone_number'])
+        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
                              reply_markup=kb_next)
+
         data['trainer'] = result['person_id']
         data['schedule'] = result['schedule']
         data['name'] = result['name']
@@ -174,21 +174,39 @@ async def trainer_pagination(message: Message, state: FSMContext):
 
 @dp.message_handler(lambda message: message.text == "Подобається", state=TrainerChoiceState.trainer_info)
 async def reg_for_training(message: Message, state: FSMContext):
-    days = utils.five_days()
+    days = utils.get_next_five_days()
     kb_days = ReplyKeyboardMarkup(resize_keyboard=True)
     kb_days.add(*days)
     async with state.proxy() as data:
-        await message.answer(f"Ви обрали тренера - {data['name']}.\nВиберіть день для тренрування!",
+        await message.answer(f"Ви обрали тренера - {data['name']}.\nВиберіть день для тренування!",
                              reply_markup=kb_days)
 
 
-@dp.message_handler(lambda message: message.text in utils.five_days(), state=TrainerChoiceState.trainer_info)
+@dp.message_handler(lambda message: message.text in utils.get_next_five_days(),
+                    state=TrainerChoiceState.trainer_info)
 async def timing(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['day'] = message.text
-        time = utils.hours(data['schedule'], data['day'])
-        pass
+        time = utils.get_time_slots(data['schedule'], data['day'])
+        for el in time:
+            kb_time.add(InlineKeyboardButton(text=el, callback_data=el))
 
+        if data['day'] == str(datetime.datetime.now().date()):
+            await message.reply(text="Сьогодні залишився тільки такий час:", reply_markup=kb_time)
+        else:
+            await message.reply(text="Виберіть зручний для вас час.", reply_markup=kb_time)
+        await TrainerChoiceState.next()
+
+
+@dp.callback_query_handler(lambda c: c.data in utils.get_time_slots("00:00-23:00",
+                                                                    str(datetime.datetime.now().date())))
+async def load_to_db(callback_query: CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, "asasd")
+    # async with state.proxy() as data:
+    #     data['time'] = message.text
+    #     await message.answer(text=f"Ви записані {data['day']}-го о {data['time']} годині, до тренера {data['name']}.",
+    #                          reply_markup=ReplyKeyboardRemove())
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)
