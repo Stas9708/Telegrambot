@@ -10,12 +10,10 @@ import text
 import utils
 import datetime
 
-
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 db = Database()
-
 
 kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_choose_trainer = ReplyKeyboardMarkup(resize_keyboard=True)
@@ -46,8 +44,12 @@ class TrainerChoiceState(StatesGroup):
     entry_to_db = State()
 
 
-def schedule_to_json(person_id, schedule):
-    pass
+class TrainerChangeInfo(StatesGroup):
+    change_price = State()
+    change_schedule = State()
+    change_number = State()
+    change_desc = State()
+    change_photo = State()
 
 
 @dp.message_handler(commands=["start"])
@@ -55,9 +57,9 @@ async def start_command(message: Message):
     result = db.get_people(message.from_user['id'])
     if result is None:
         await message.answer("Виберіть що забажаєте)", reply_markup=kb_start)
-    elif db.get_trainer(result['id'])['person_id'] == result['id']:
+    elif db.get_trainer(person_id=result['id'])['person_id'] == result['id']:
         await message.answer("Ви зарегестровані як тренер.\nДля того щоб подивитись функціонал тренера введіть - "
-                             "/for_trainers!", reply_markup=kb_choose_trainer)
+                             "/for_trainers!")
     else:
         await message.answer("Ну що ж підкачаємось?)", reply_markup=kb_choose_trainer)
 
@@ -67,7 +69,7 @@ async def help_command(message: Message):
     await message.reply(text=text.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
 
 
-@dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"])
+@dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"], commands=["trainer_reg"])
 async def registration(message: Message):
     if message.text == "Потренуватись":
         await message.answer("Будь-ласка зарегеструйтесь!\nНапишіть своє ім'я та прізвище.",
@@ -141,12 +143,78 @@ async def load_client_name(message: Message, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(lambda message: message.text == "Вибрати тренера")
+@dp.message_handler(commands=["for_trainers"])
+async def for_trainers_command(message: Message):
+    await message.answer(text=text.TRAINERS_COMMAND)
+
+
+@dp.message_handler(commands=["change_price", "change_schedule", "change_number", "change_desc", "change_photo"])
+async def trainer_command(message: Message):
+    if message.text == "/change_price":
+        await message.answer("Вкажіть нову ціну")
+        await TrainerChangeInfo.change_price.set()
+    elif message.text == "/change_schedule":
+        await message.answer("напишіть новий час роботи.")
+        await TrainerChangeInfo.change_schedule.set()
+    elif message.text == "/change_number":
+        await message.answer("Напишіть новий номер телефону.")
+        await TrainerChangeInfo.change_number.set()
+    elif message.text == "/change_desc":
+        await message.answer("Напишіть нове резюме.")
+        await TrainerChangeInfo.change_desc.set()
+    else:
+        await message.answer("Пришліть нове фото.")
+        await TrainerChangeInfo.change_photo.set()
+
+
+@dp.message_handler(state=TrainerChangeInfo.change_price)
+async def change_price_command(message: Message, state: FSMContext):
+    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_price", message.text)
+    await message.reply("Ціну замінено успішно!")
+    await state.finish()
+
+
+@dp.message_handler(state=TrainerChangeInfo.change_schedule)
+async def change_price_command(message: Message, state: FSMContext):
+    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_schedule", message.text)
+    await message.reply("Час роботи замінено успішно.")
+    await state.finish()
+
+
+@dp.message_handler(state=TrainerChangeInfo.change_number)
+async def change_price_command(message: Message, state: FSMContext):
+    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_number", message.text)
+    await message.reply("Номер телефону, замінено успішно.")
+    await state.finish()
+
+
+@dp.message_handler(state=TrainerChangeInfo.change_desc)
+async def change_price_command(message: Message, state: FSMContext):
+    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_desc", message.text)
+    await message.reply("Резюме замінено успішно.")
+    await state.finish()
+
+
+@dp.message_handler(state=TrainerChangeInfo.change_photo)
+async def change_price_command(message: Message, state: FSMContext):
+    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_photo",
+                           message.photo[-1].file_id)
+    await message.reply("Фото замінено успішно.")
+    await state.finish()
+
+
+@dp.message_handler(commands=["see_work_schedule"])
+async def get_trainer_schedule(message: Message):
+    data = db.get_schedule(utils.get_trainer_id(message.from_user.id))
+    await message.answer(text=data)
+
+
+@dp.message_handler(lambda message: message.text in ["Вибрати тренера", "/work_out"])
 async def show_trainer(message: Message, state: FSMContext):
     await TrainerChoiceState.trainer_info.set()
     async with state.proxy() as data:
         data['count'] = 0
-        result = db.get_trainers(data['count'])
+        result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
         data['count'] += 1
         desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
                                                result['price'], result['phone_number'])
@@ -160,7 +228,7 @@ async def show_trainer(message: Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text == "next >", state=TrainerChoiceState.trainer_info)
 async def trainer_pagination(message: Message, state: FSMContext):
     async with state.proxy() as data:
-        result = db.get_trainers(data['count'])
+        result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
         data['count'] += 1
         desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
                                                result['price'], result['phone_number'])
@@ -190,7 +258,6 @@ async def timing(message: Message, state: FSMContext):
         time = utils.get_time_slots(data['schedule'], data['day'])
         for el in time:
             kb_time.add(InlineKeyboardButton(text=el, callback_data=el))
-
         if data['day'] == str(datetime.datetime.now().date()):
             await message.reply(text="Сьогодні залишився тільки такий час:", reply_markup=kb_time)
         else:
@@ -198,15 +265,18 @@ async def timing(message: Message, state: FSMContext):
         await TrainerChoiceState.next()
 
 
-@dp.callback_query_handler(lambda c: c.data in utils.get_time_slots("00:00-23:00",
-                                                                    str(datetime.datetime.now().date())))
-async def load_to_db(callback_query: CallbackQuery):
+@dp.callback_query_handler(state=TrainerChoiceState.entry_to_db)
+async def load_to_db(callback_query: CallbackQuery, state: FSMContext):
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, "asasd")
-    # async with state.proxy() as data:
-    #     data['time'] = message.text
-    #     await message.answer(text=f"Ви записані {data['day']}-го о {data['time']} годині, до тренера {data['name']}.",
-    #                          reply_markup=ReplyKeyboardRemove())
+    async with state.proxy() as data:
+        json_str = utils.get_data(data['day'], callback_query.data,
+                                  db.get_people(callback_query.from_user.id)['name'])
+        db.add_to_timetable(data['trainer'], json_str)
+        await bot.send_message(callback_query.from_user.id,
+                               text=f"Ви записані до: {data['name']}.\nНа {data['day']},"
+                                    f" о {callback_query.data} годині.", reply_markup=ReplyKeyboardRemove())
+    await state.finish()
+
 
 if __name__ == "__main__":
     executor.start_polling(dp, skip_updates=True)

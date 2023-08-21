@@ -1,4 +1,8 @@
 import datetime
+import json
+from db import Database
+
+db = Database()
 
 
 def get_time_slots(interim: str, day):
@@ -35,3 +39,18 @@ def get_next_five_days():
     days = [(today + datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(5)]
     return days
 
+
+def get_data(day, time, client_name):
+    data = {
+        day: {
+            time: [client_name]
+        }
+    }
+    json_str = json.dumps(data)
+    return json_str
+
+
+def get_trainer_id(user_id):
+    people_id = db.get_people(user_id)
+    trainer_id = db.get_trainer(people_id)
+    return trainer_id['person_id']
