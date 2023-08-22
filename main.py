@@ -52,21 +52,22 @@ class TrainerChangeInfo(StatesGroup):
     change_photo = State()
 
 
-@dp.message_handler(commands=["start"])
+@dp.message_handler(commands=["start", "help"])
 async def start_command(message: Message):
-    result = db.get_people(message.from_user['id'])
-    if result is None:
-        await message.answer("Виберіть що забажаєте)", reply_markup=kb_start)
-    elif db.get_trainer(person_id=result['id'])['person_id'] == result['id']:
-        await message.answer("Ви зарегестровані як тренер.\nДля того щоб подивитись функціонал тренера введіть - "
-                             "/for_trainers!")
+    if message.text == "/help":
+        if utils.get_trainer_id(message.from_user.id) is None:
+            await message.reply(text=text.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
+        else:
+            await message.reply("Так як ви тренер, у вас зовсім інші команди.")
     else:
-        await message.answer("Ну що ж підкачаємось?)", reply_markup=kb_choose_trainer)
-
-
-@dp.message_handler(commands=["help"])
-async def help_command(message: Message):
-    await message.reply(text=text.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
+        result = db.get_people(message.from_user['id'])
+        if result is None:
+            await message.answer("Виберіть що забажаєте)", reply_markup=kb_start)
+        elif db.get_trainer(person_id=result['id'])['person_id'] == result['id']:
+            await message.answer("Ви зарегестровані як тренер.\nДля того щоб подивитись функціонал тренера введіть - "
+                                 "/for_trainers!", reply_markup=ReplyKeyboardRemove())
+        else:
+            await message.answer("Ну що ж підкачаємось?)", reply_markup=kb_choose_trainer)
 
 
 @dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"], commands=["trainer_reg"])
@@ -143,18 +144,16 @@ async def load_client_name(message: Message, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(commands=["for_trainers"])
-async def for_trainers_command(message: Message):
-    await message.answer(text=text.TRAINERS_COMMAND)
-
-
-@dp.message_handler(commands=["change_price", "change_schedule", "change_number", "change_desc", "change_photo"])
+@dp.message_handler(commands=["change_price", "change_schedule", "change_number", "change_desc", "change_photo",
+                              "for_trainers"])
 async def trainer_command(message: Message):
-    if message.text == "/change_price":
-        await message.answer("Вкажіть нову ціну")
+    if message.text == "/for_trainers":
+        await message.answer(text=text.TRAINERS_COMMAND)
+    elif message.text == "/change_price":
+        await message.answer("Вкажіть нову ціну. Напишіть просто цифру!")
         await TrainerChangeInfo.change_price.set()
     elif message.text == "/change_schedule":
-        await message.answer("напишіть новий час роботи.")
+        await message.answer("Напишіть новий час роботи ~ 07:00-21:00.")
         await TrainerChangeInfo.change_schedule.set()
     elif message.text == "/change_number":
         await message.answer("Напишіть новий номер телефону.")
@@ -195,7 +194,7 @@ async def change_price_command(message: Message, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(state=TrainerChangeInfo.change_photo)
+@dp.message_handler(state=TrainerChangeInfo.change_photo, content_types=["photo"])
 async def change_price_command(message: Message, state: FSMContext):
     db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_photo",
                            message.photo[-1].file_id)
@@ -209,35 +208,68 @@ async def get_trainer_schedule(message: Message):
     await message.answer(text=data)
 
 
+@dp.message_handler(state=TrainerChoiceState.states, commands=["work_out"])
+async def work_out_command_exception(message: Message, state: FSMContext):
+    await message.reply("Щось пішло не так.")
+    await start_command(message)
+    await state.finish()
+
+
 @dp.message_handler(lambda message: message.text in ["Вибрати тренера", "/work_out"])
 async def show_trainer(message: Message, state: FSMContext):
-    await TrainerChoiceState.trainer_info.set()
-    async with state.proxy() as data:
-        data['count'] = 0
-        result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
-        data['count'] += 1
-        desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
-                                               result['price'], result['phone_number'])
-        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
-                             reply_markup=kb_next)
-        data['trainer'] = result['person_id']
-        data['schedule'] = result['schedule']
-        data['name'] = result['name']
+    if message.text in text.CLIENT_COMMANDS_LIST and utils.get_trainer_id(message.from_user.id) is None:
+        if message.text in ["/start", "/help"]:
+            await start_command(message)
+        else:
+            await registration(message)
+    elif message.text in text.TRAINER_COMMANDS_LIST and type(utils.get_trainer_id(message.from_user.id)) == int:
+        if message.text == "/start":
+            await start_command(message)
+        else:
+            await trainer_command(message)
+    else:
+        await TrainerChoiceState.trainer_info.set()
+        async with state.proxy() as data:
+            data['count'] = 0
+            result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
+            if result is None:
+                await message.answer("Нажаль, на данний момент тренерів немає!")
+                await state.finish()
+            else:
+                data['count'] += 1
+                desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
+                                                       result['price'], result['phone_number'])
+                await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
+                                     reply_markup=kb_next)
+                data['trainer'] = result['person_id']
+                data['schedule'] = result['schedule']
+                data['name'] = result['name']
 
 
 @dp.message_handler(lambda message: message.text == "next >", state=TrainerChoiceState.trainer_info)
 async def trainer_pagination(message: Message, state: FSMContext):
-    async with state.proxy() as data:
-        result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
-        data['count'] += 1
-        desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
-                                               result['price'], result['phone_number'])
-        await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
-                             reply_markup=kb_next)
+    if message.text in text.CLIENT_COMMANDS_LIST and utils.get_trainer_id(message.from_user.id) is None:
+        if message.text in ["/start", "/help"]:
+            await start_command(message)
+        else:
+            await registration(message)
+    elif message.text in text.TRAINER_COMMANDS_LIST and type(utils.get_trainer_id(message.from_user.id)) == int:
+        if message.text == "/start":
+            await start_command(message)
+        else:
+            await trainer_command(message)
+    else:
+        async with state.proxy() as data:
+            result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
+            data['count'] += 1
+            desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
+                                                   result['price'], result['phone_number'])
+            await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
+                                 reply_markup=kb_next)
 
-        data['trainer'] = result['person_id']
-        data['schedule'] = result['schedule']
-        data['name'] = result['name']
+            data['trainer'] = result['person_id']
+            data['schedule'] = result['schedule']
+            data['name'] = result['name']
 
 
 @dp.message_handler(lambda message: message.text == "Подобається", state=TrainerChoiceState.trainer_info)

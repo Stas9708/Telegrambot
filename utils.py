@@ -52,5 +52,9 @@ def get_data(day, time, client_name):
 
 def get_trainer_id(user_id):
     people_id = db.get_people(user_id)
-    trainer_id = db.get_trainer(people_id)
+    trainer_id = db.get_trainer(people_id['id'])
+    if people_id is None or trainer_id is None:
+        return None
+
     return trainer_id['person_id']
+

@@ -19,8 +19,9 @@ class Database:
     def get_trainer(self, person_id):
         with self.connection.cursor() as cursor:
             sql = ("SELECT `person_id` "
-                   "FROM `trainers` ")
-            cursor.execute(sql)
+                   "FROM `trainers` "
+                   "WHERE `person_id` = %s")
+            cursor.execute(sql, person_id)
             result = cursor.fetchone()
 
         return result
@@ -76,23 +77,23 @@ class Database:
         with self.connection.cursor() as cursor:
             if trainer_command == "/change_price":
                 sql = ("UPDATE `trainers` "
-                       "SET `price` = %s` "
+                       "SET `price` = %s "
                        "WHERE `person_id` = %s")
             elif trainer_command == "/change_schedule":
                 sql = ("UPDATE `trainers` "
-                       "SET `schedule` = %s` "
+                       "SET `schedule` = %s "
                        "WHERE `person_id` = %s")
             elif trainer_command == "/change_number":
                 sql = ("UPDATE `trainers` "
-                       "SET `phone_number` = %s` "
+                       "SET `phone_number` = %s "
                        "WHERE `person_id` = %s")
             elif trainer_command == "/change_desc":
                 sql = ("UPDATE `trainers` "
-                       "SET `description` = %s` "
+                       "SET `description` = %s "
                        "WHERE `person_id` = %s")
             elif trainer_command == "/change_photo":
                 sql = ("UPDATE `trainers` "
-                       "SET `photo` = %s` "
+                       "SET `photo` = %s "
                        "WHERE `person_id` = %s")
             cursor.execute(sql, (new_info, trainer_id))
         self.connection.commit()
