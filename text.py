@@ -1,7 +1,8 @@
 HELP_COMMAND = """
 /start - початок роботи 
 /help - список команд 
-/trainer_reg - зарегіструватись як тренер
+/trainer_reg - зареєструватись як тренер
+/cancel_workout - відмінити тренування
 """
 
 TRAINERS_COMMAND = """
@@ -12,6 +13,7 @@ TRAINERS_COMMAND = """
 /change_photo - змінити фото 
 /work_out - вибрати собі тренера
 /see_work_schedule - подивитись графік роботи
+/cancel_training - відмінити тренування з тренером
 """
 
 CLIENT_COMMANDS_LIST = ["/start", "/help", "/trainer_reg"]

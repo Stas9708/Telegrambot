@@ -19,6 +19,7 @@ kb_start = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_choose_trainer = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_next = ReplyKeyboardMarkup(resize_keyboard=True)
 kb_time = InlineKeyboardMarkup()
+kb_schedule = InlineKeyboardMarkup()
 button_dict = {"registration_button": [kb_start.add(KeyboardButton("Потренуватись")),
                                        kb_start.add(KeyboardButton("Потренувати"))],
                "client_button": [kb_choose_trainer.add(KeyboardButton("Вибрати тренера")),
@@ -52,6 +53,10 @@ class TrainerChangeInfo(StatesGroup):
     change_photo = State()
 
 
+class TrainerScheduleState(StatesGroup):
+    change_day = State()
+
+
 @dp.message_handler(commands=["start", "help"])
 async def start_command(message: Message):
     if message.text == "/help":
@@ -63,14 +68,14 @@ async def start_command(message: Message):
         result = db.get_people(message.from_user['id'])
         if result is None:
             await message.answer("Виберіть що забажаєте)", reply_markup=kb_start)
-        elif db.get_trainer(person_id=result['id'])['person_id'] == result['id']:
+        elif utils.get_trainer_id(message.from_user.id) == result['id']:
             await message.answer("Ви зарегестровані як тренер.\nДля того щоб подивитись функціонал тренера введіть - "
                                  "/for_trainers!", reply_markup=ReplyKeyboardRemove())
         else:
             await message.answer("Ну що ж підкачаємось?)", reply_markup=kb_choose_trainer)
 
 
-@dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати"], commands=["trainer_reg"])
+@dp.message_handler(lambda message: message.text in ["Потренуватись", "Потренувати", "/trainer_reg"])
 async def registration(message: Message):
     if message.text == "Потренуватись":
         await message.answer("Будь-ласка зарегеструйтесь!\nНапишіть своє ім'я та прізвище.",
@@ -124,7 +129,7 @@ async def load_price(message: Message, state: FSMContext):
 
 
 @dp.message_handler(state=TrainerRegStates.trainer_phone)
-async def load_price(message: Message, state: FSMContext):
+async def end_registration(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer_phone'] = str(message.text)
     db.add_people(message.from_user['id'], data['trainer_name'])
@@ -140,30 +145,35 @@ async def load_client_name(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data["client_name"] = message.text
     db.add_people(message.from_user['id'], data["client_name"])
-    await message.answer("Регістрація пройшла успішно!", reply_markup=kb_choose_trainer)
+    await message.answer("Регістрація пройшла успішно!\nДля того щоб подивитись функціонал тренера введіть - "
+                         "/for_trainers!", reply_markup=kb_choose_trainer)
     await state.finish()
 
 
 @dp.message_handler(commands=["change_price", "change_schedule", "change_number", "change_desc", "change_photo",
-                              "for_trainers"])
+                              "for_trainers", "cancel_training"])
 async def trainer_command(message: Message):
     if message.text == "/for_trainers":
-        await message.answer(text=text.TRAINERS_COMMAND)
+        await message.answer(text=text.TRAINERS_COMMAND, reply_markup=ReplyKeyboardRemove())
     elif message.text == "/change_price":
-        await message.answer("Вкажіть нову ціну. Напишіть просто цифру!")
+        await message.answer("Вкажіть нову ціну. Напишіть просто цифру!", reply_markup=ReplyKeyboardRemove())
         await TrainerChangeInfo.change_price.set()
     elif message.text == "/change_schedule":
-        await message.answer("Напишіть новий час роботи ~ 07:00-21:00.")
+        await message.answer("Напишіть новий час роботи ~ 07:00-21:00.", reply_markup=ReplyKeyboardRemove())
         await TrainerChangeInfo.change_schedule.set()
     elif message.text == "/change_number":
-        await message.answer("Напишіть новий номер телефону.")
+        await message.answer("Напишіть новий номер телефону.", reply_markup=ReplyKeyboardRemove())
         await TrainerChangeInfo.change_number.set()
     elif message.text == "/change_desc":
-        await message.answer("Напишіть нове резюме.")
+        await message.answer("Напишіть нове резюме.", reply_markup=ReplyKeyboardRemove())
         await TrainerChangeInfo.change_desc.set()
-    else:
-        await message.answer("Пришліть нове фото.")
+    elif message.text == "/change_photo":
+        await message.answer("Пришліть нове фото.", reply_markup=ReplyKeyboardRemove())
         await TrainerChangeInfo.change_photo.set()
+    elif message.text == "/cancel_training":
+        pass
+    else:
+        await get_trainer_schedule(message)
 
 
 @dp.message_handler(state=TrainerChangeInfo.change_price)
@@ -205,7 +215,33 @@ async def change_price_command(message: Message, state: FSMContext):
 @dp.message_handler(commands=["see_work_schedule"])
 async def get_trainer_schedule(message: Message):
     data = db.get_schedule(utils.get_trainer_id(message.from_user.id))
-    await message.answer(text=data)
+    if data is None:
+        await message.answer("Нажаль у вас немає тренувань!")
+    else:
+        data = utils.get_dict(data)
+        day_now = datetime.datetime.now().date()
+        for element in data:
+            for key, value in element.items():
+                data_object = datetime.datetime.strptime(key, "%Y-%m-%d")
+                date_only = data_object.date()
+                if date_only >= day_now:
+                    for k, v in value.items():
+                        temp_text = ""
+                        if len(value) > 1:
+                            for time, name in value.items():
+                                temp_text += f"{time} - {''.join(name)}\n"
+                        else:
+                            temp_text += f"{k} - {''.join(v)}"
+                        kb_time.add(InlineKeyboardButton(text=str(date_only), callback_data=temp_text))
+        await TrainerScheduleState.change_day.set()
+        await message.answer("Виберіть день.", reply_markup=kb_time)
+
+
+@dp.callback_query_handler(state=TrainerScheduleState.change_day)
+async def show_trainer_schedule(callback_query: CallbackQuery, state: FSMContext):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, text=callback_query.data)
+    await state.finish()
 
 
 @dp.message_handler(state=TrainerChoiceState.states, commands=["work_out"])
@@ -246,30 +282,37 @@ async def show_trainer(message: Message, state: FSMContext):
                 data['name'] = result['name']
 
 
-@dp.message_handler(lambda message: message.text == "next >", state=TrainerChoiceState.trainer_info)
+@dp.message_handler(lambda message: message.text in ["next >", *text.TRAINER_COMMANDS_LIST,
+                                                     *text.CLIENT_COMMANDS_LIST], state=TrainerChoiceState.trainer_info)
 async def trainer_pagination(message: Message, state: FSMContext):
     if message.text in text.CLIENT_COMMANDS_LIST and utils.get_trainer_id(message.from_user.id) is None:
         if message.text in ["/start", "/help"]:
             await start_command(message)
         else:
             await registration(message)
+        await state.finish()
     elif message.text in text.TRAINER_COMMANDS_LIST and type(utils.get_trainer_id(message.from_user.id)) == int:
         if message.text == "/start":
             await start_command(message)
         else:
             await trainer_command(message)
+        await state.finish()
     else:
         async with state.proxy() as data:
             result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
-            data['count'] += 1
-            desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
-                                                   result['price'], result['phone_number'])
-            await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
-                                 reply_markup=kb_next)
+            if result['photo'] is None:
+                await message.answer("Нажаль тренерів більше немає.")
+                await start_command(message)
+            else:
+                data['count'] += 1
+                desc = text.TRAINER_DESCRIPTION.format(result['name'], result['description'], result['schedule'],
+                                                       result['price'], result['phone_number'])
+                await bot.send_photo(chat_id=message.from_user.id, photo=result['photo'], caption=desc,
+                                     reply_markup=kb_next)
 
-            data['trainer'] = result['person_id']
-            data['schedule'] = result['schedule']
-            data['name'] = result['name']
+                data['trainer'] = result['person_id']
+                data['schedule'] = result['schedule']
+                data['name'] = result['name']
 
 
 @dp.message_handler(lambda message: message.text == "Подобається", state=TrainerChoiceState.trainer_info)
@@ -284,7 +327,7 @@ async def reg_for_training(message: Message, state: FSMContext):
 
 @dp.message_handler(lambda message: message.text in utils.get_next_five_days(),
                     state=TrainerChoiceState.trainer_info)
-async def timing(message: Message, state: FSMContext):
+async def show_time_to_client(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['day'] = message.text
         time = utils.get_time_slots(data['schedule'], data['day'])
@@ -308,6 +351,14 @@ async def load_to_db(callback_query: CallbackQuery, state: FSMContext):
                                text=f"Ви записані до: {data['name']}.\nНа {data['day']},"
                                     f" о {callback_query.data} годині.", reply_markup=ReplyKeyboardRemove())
     await state.finish()
+
+
+@dp.message_handler(commands=["cancel_training", "cancel_workout"])
+async def cancel_training(message: Message):
+    if message.text == "/cancel_training":
+        pass
+    else:
+        pass
 
 
 if __name__ == "__main__":

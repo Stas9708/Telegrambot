@@ -37,6 +37,7 @@ def get_time_slots(interim: str, day):
 def get_next_five_days():
     today = datetime.datetime.today()
     days = [(today + datetime.timedelta(days=i)).strftime('%Y-%m-%d') for i in range(5)]
+
     return days
 
 
@@ -47,7 +48,16 @@ def get_data(day, time, client_name):
         }
     }
     json_str = json.dumps(data)
+
     return json_str
+
+
+def get_dict(json_str):
+    py_obj = None
+    for el in json_str:
+        j_str = el['schedule']
+        py_obj = json.loads(j_str)
+    return py_obj
 
 
 def get_trainer_id(user_id):
@@ -58,3 +68,7 @@ def get_trainer_id(user_id):
 
     return trainer_id['person_id']
 
+
+def schedule_parsing(name):
+    schedule = db.get_schedule()
+    pass
