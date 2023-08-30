@@ -1,4 +1,5 @@
 import config
+import json
 
 
 class Database:
@@ -52,7 +53,7 @@ class Database:
                        f"FROM `people` "
                        f"LEFT JOIN `trainers` ON people.id = trainers.person_id "
                        f"LIMIT 1 OFFSET {offset}")
-                       # f"WHERE `person_id` <> {user_id}")
+                # f"WHERE `person_id` <> {user_id}")
             else:
                 sql = (f"SELECT `person_id`, `name`, `description`, `photo`, `price`, `schedule`, `phone_number` "
                        f"FROM `people` "
@@ -63,23 +64,31 @@ class Database:
             result = cursor.fetchone()
         return result
 
-    def add_to_timetable(self, trainer_id, data):
+    def add_to_timetable(self, trainer_id, day, time, value):
         with self.connection.cursor() as cursor:
-            sql = ("SELECT `trainer_id` "
-                   "FROM `timetable` ")
-            cursor.execute(sql)
-            result = cursor.fetchall()
-            for dictionary in result:
-                if dictionary['trainer_id'] == trainer_id:
-                    sql = ("UPDATE `timetable` "
-                           "SET `schedule` = JSON_SET(`schedule`, '$', %s) "
-                           "WHERE `trainer_id` = %s")
-                    cursor.execute(sql, (data, trainer_id))
-                    break
+            sql = ("SELECT `schedule` "
+                   "FROM `timetable` "
+                   "WHERE `trainer_id` = %s")
+            cursor.execute(sql, (trainer_id,))
+            result = cursor.fetchone()
+
+            if result:
+                current_schedule = json.loads(result['schedule'])
             else:
-                sql = ("INSERT INTO `timetable` (`trainer_id`, `schedule`) "
-                       "VALUES (%s, %s)")
-                cursor.execute(sql, (trainer_id, data))
+                current_schedule = {}
+
+            if day not in current_schedule:
+                current_schedule[day] = {}
+            if time not in current_schedule[day]:
+                current_schedule[day][time] = [value]
+            else:
+                current_schedule[day][time].append(value)
+
+            sql = ("INSERT INTO `timetable` (`trainer_id`, `schedule`) "
+                   "VALUES (%s, %s) " 
+                   "ON DUPLICATE KEY UPDATE `schedule` = VALUES(`schedule`)")
+            cursor.execute(sql, (trainer_id, json.dumps(current_schedule)))
+
         self.connection.commit()
 
     def get_schedule(self, trainer_id=None):

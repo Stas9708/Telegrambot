@@ -344,9 +344,8 @@ async def show_time_to_client(message: Message, state: FSMContext):
 async def load_to_db(callback_query: CallbackQuery, state: FSMContext):
     await bot.answer_callback_query(callback_query.id)
     async with state.proxy() as data:
-        json_str = utils.get_data(data['day'], callback_query.data,
-                                  db.get_people(callback_query.from_user.id)['name'])
-        db.add_to_timetable(data['trainer'], json_str)
+        db.add_to_timetable(data['trainer'], data['day'], callback_query.data,
+                            db.get_people(callback_query.from_user.id)['name'])
         await bot.send_message(callback_query.from_user.id,
                                text=f"Ви записані до: {data['name']}.\nНа {data['day']},"
                                     f" о {callback_query.data} годині.", reply_markup=ReplyKeyboardRemove())
