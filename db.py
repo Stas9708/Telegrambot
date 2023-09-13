@@ -85,7 +85,7 @@ class Database:
                 current_schedule[day][time].append(value)
 
             sql = ("INSERT INTO `timetable` (`trainer_id`, `schedule`) "
-                   "VALUES (%s, %s) " 
+                   "VALUES (%s, %s) "
                    "ON DUPLICATE KEY UPDATE `schedule` = VALUES(`schedule`)")
             cursor.execute(sql, (trainer_id, json.dumps(current_schedule)))
 
@@ -106,25 +106,50 @@ class Database:
 
     def change_trainer_info(self, trainer_id, trainer_command, new_info):
         with self.connection.cursor() as cursor:
+            base_sql = "UPDATE `trainers` SET field = %s WHERE `person_id` = %s"
             if trainer_command == "/change_price":
-                sql = ("UPDATE `trainers` "
-                       "SET `price` = %s "
-                       "WHERE `person_id` = %s")
+                base_sql = base_sql.replace("field", "`price`")
             elif trainer_command == "/change_schedule":
-                sql = ("UPDATE `trainers` "
-                       "SET `schedule` = %s "
-                       "WHERE `person_id` = %s")
+                base_sql = base_sql.replace("field", "`schedule`")
             elif trainer_command == "/change_number":
-                sql = ("UPDATE `trainers` "
-                       "SET `phone_number` = %s "
-                       "WHERE `person_id` = %s")
+                base_sql = base_sql.replace("field", "`phone_number`")
             elif trainer_command == "/change_desc":
-                sql = ("UPDATE `trainers` "
-                       "SET `description` = %s "
-                       "WHERE `person_id` = %s")
+                base_sql = base_sql.replace("field", "`description`")
             elif trainer_command == "/change_photo":
-                sql = ("UPDATE `trainers` "
-                       "SET `photo` = %s "
-                       "WHERE `person_id` = %s")
-            cursor.execute(sql, (new_info, trainer_id))
+                base_sql = base_sql.replace("field", "`photo`")
+            cursor.execute(base_sql, (new_info, trainer_id))
+        self.connection.commit()
+
+    def get_standing_schedule(self, trainer_id):
+        with self.connection.cursor() as cursor:
+            sql = ("SELECT `schedule`, `standing_schedule` "
+                   "FROM `timetable` "
+                   "WHERE `trainer_id` = %s")
+            cursor.execute(sql, (trainer_id,))
+        result = cursor.fetchall()
+
+        return result
+
+    def add_standing_schedule(self, trainer_id, time, days, client_name):
+        from utils import DAYS_OF_WEEK_DICT
+        with self.connection.cursor() as cursor:
+            result = Database.get_standing_schedule(self, trainer_id)
+            if result[0]['standing_schedule'] is not None:
+                current_schedule = json.loads(result[0]['standing_schedule'])
+            else:
+                current_schedule = {}
+
+            for day in days:
+                for key, value in DAYS_OF_WEEK_DICT.items():
+                    if day == value:
+                        if len(current_schedule) == 0 or str(key) not in current_schedule.keys():
+                            current_schedule.setdefault(key, {time: client_name})
+                        else:
+                            current_schedule[str(key)].setdefault(time, client_name)
+
+            sql = ("INSERT INTO `timetable` (`trainer_id`, `schedule`, `standing_schedule`) "
+                   "VALUES (%s, %s, %s) "
+                   "ON DUPLICATE KEY UPDATE `standing_schedule` = VALUES(`standing_schedule`)")
+            cursor.execute(sql, (trainer_id, result[0]['schedule'], json.dumps(current_schedule)))
+
         self.connection.commit()

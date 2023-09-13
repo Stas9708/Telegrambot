@@ -4,8 +4,18 @@ from db import Database
 
 db = Database()
 
+DAYS_OF_WEEK_DICT = {
+    0: "Понеділок",
+    1: "Вівторок",
+    2: "Середа",
+    3: "Четвер",
+    4: "П'ятниця",
+    5: "Субота",
+    6: "Неділя"
+}
 
-def get_time_slots(interim: str, day):
+
+def get_time_slots(interim: str, day=None):
     TIME_FORMAT = "%H:%M"
     day_now = datetime.date.today()
     time = interim.split('-')
@@ -41,22 +51,13 @@ def get_next_five_days():
     return days
 
 
-def get_data(day, time, client_name):
-    data = {
-        day: {
-            time: [client_name]
-        }
-    }
-    json_str = json.dumps(data)
-
-    return json_str
-
-
-def get_dict(json_str):
+def get_dict(data):
     py_obj = None
-    for el in json_str:
-        j_str = el['schedule']
-        py_obj = json.loads(j_str)
+    if len(data) == 1:
+        py_obj = json.loads(data[0]['schedule'])
+    else:
+        for el in data:
+            py_obj = json.loads(el['schedule'])
     return py_obj
 
 
@@ -67,8 +68,3 @@ def get_trainer_id(user_id):
         return None
 
     return trainer_id['person_id']
-
-
-def schedule_parsing(name):
-    schedule = db.get_schedule()
-    pass
