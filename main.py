@@ -11,7 +11,6 @@ import utils
 import datetime
 import json
 
-
 bot = Bot(BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
@@ -66,6 +65,17 @@ class TrainerScheduleState(StatesGroup):
 
 class TrainerStandingScheduleState(StatesGroup):
     standing_schedule_info = State()
+
+
+class CancelClientTrainingState(StatesGroup):
+    client_name = State()
+    date = State()
+    time = State()
+
+
+class CancelTrainerTrainingState(StatesGroup):
+    date = State()
+    time = State()
 
 
 @dp.message_handler(commands=["start", "help"])
@@ -162,8 +172,8 @@ async def load_client_name(message: Message, state: FSMContext):
 
 
 @dp.message_handler(commands=["change_price", "change_schedule", "change_number", "change_desc", "change_photo",
-                              "for_trainers", "cancel_training"])
-async def trainer_command(message: Message):
+                              "for_trainers"])
+async def trainer_command(message: Message, state: FSMContext):
     if message.text == "/for_trainers":
         await message.answer(text=text.TRAINERS_COMMAND, reply_markup=ReplyKeyboardRemove())
     elif message.text == "/change_price":
@@ -181,8 +191,6 @@ async def trainer_command(message: Message):
     elif message.text == "/change_photo":
         await message.answer("Пришліть нове фото.", reply_markup=ReplyKeyboardRemove())
         await TrainerChangeInfo.change_photo.set()
-    elif message.text == "/cancel_training":
-        pass
     else:
         await get_trainer_schedule(message)
 
@@ -224,36 +232,37 @@ async def change_price_command(message: Message, state: FSMContext):
 
 
 @dp.message_handler(commands=["see_work_schedule"])
-async def get_trainer_schedule(message: Message):
-    data = db.get_schedule(utils.get_trainer_id(message.from_user.id))
-    if data is None:
-        await message.answer("Нажаль у вас немає тренувань!")
-    else:
-        data = utils.get_dict(data)
-        day_now = datetime.datetime.now().date()
-        for key, value in data.items():
-            date_object = datetime.datetime.strptime(key, "%Y-%m-%d")
-            date_only = date_object.date()
-            if date_only >= day_now:
-                kb_date_for_trainer.add(InlineKeyboardButton(text=str(date_only), callback_data=str(date_only)))
-        await TrainerScheduleState.change_day.set()
-        await message.answer("Виберіть день.", reply_markup=kb_date_for_trainer)
+async def get_trainer_schedule(message: Message, state: FSMContext):
+    await TrainerScheduleState.change_day.set()
+    async with state.proxy() as data:
+        data_dict = utils.get_general_dict(utils.get_trainer_id(message.from_user.id))
+        data['general_dict'] = data_dict
+        if data_dict is None:
+            await message.answer("Нажаль у вас немає тренувань!")
+        else:
+            day_now = datetime.datetime.now().date()
+            for key, value in data_dict.items():
+                date_object = datetime.datetime.strptime(key, "%Y-%m-%d").date()
+                if date_object >= day_now:
+                    kb_date_for_trainer.add(InlineKeyboardButton(text=str(date_object), callback_data=str(date_object)))
+            await message.answer("Виберіть день.", reply_markup=kb_date_for_trainer)
 
 
 @dp.callback_query_handler(state=TrainerScheduleState.change_day)
 async def show_trainer_schedule(callback_query: CallbackQuery, state: FSMContext):
     await bot.answer_callback_query(callback_query.id)
-    data = utils.get_dict(db.get_schedule(utils.get_trainer_id(callback_query.from_user.id)))
-    temp_str = ""
-    for key, val in data.items():
-        if key == callback_query.data:
-            for time, name in val.items():
-                if len(val) > 1:
-                    temp_str += f"{time} - {name[0]}\n"
-                else:
-                    temp_str += f"{time} - {name[0]}"
-    await bot.send_message(chat_id=callback_query.from_user.id, text=temp_str)
-    kb_date_for_trainer.inline_keyboard.clear()
+    async with state.proxy() as data:
+        data_dict = data['general_dict']
+        temp_str = ""
+        for key, val in data_dict.items():
+            if key == callback_query.data:
+                for time, name in val.items():
+                    if len(val) > 1:
+                        temp_str += f"{time} - {name}\n"
+                    else:
+                        temp_str += f"{time} - {name}"
+        await bot.send_message(chat_id=callback_query.from_user.id, text=temp_str)
+        kb_date_for_trainer.inline_keyboard.clear()
     await state.finish()
 
 
@@ -331,10 +340,10 @@ async def trainer_pagination(message: Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text == "Записатись на разове тренування",
                     state=TrainerChoiceState.trainer_info)
 async def reg_for_training(message: Message, state: FSMContext):
-    days = utils.get_next_five_days()
-    kb_days = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb_days.add(*days)
     async with state.proxy() as data:
+        days = utils.get_next_five_days()
+        kb_days = ReplyKeyboardMarkup(resize_keyboard=True)
+        kb_days.add(*days)
         await message.answer(f"Ви обрали тренера - {data['name']}.\nВиберіть день для тренування!",
                              reply_markup=kb_days)
 
@@ -346,12 +355,14 @@ async def show_time_to_client(message: Message, state: FSMContext):
         data['day'] = message.text
         time_slots = utils.get_time_slots(data['schedule'], data['day'])
         not_used_time_list = []
-        schedule_dict = utils.get_dict(db.get_schedule(data['trainer']))
-        if data['day'] in schedule_dict.keys():
-            for key, value in schedule_dict.items():
-                if key == data['day']:
-                    for k in value.keys():
-                        not_used_time_list.append(k)
+        schedule_dict = utils.get_general_dict(data['trainer'])
+        data['general_dict'] = schedule_dict
+        if schedule_dict:
+            if data['day'] in schedule_dict.keys():
+                for key, value in schedule_dict.items():
+                    if key == data['day']:
+                        for k in value.keys():
+                            not_used_time_list.append(k)
         time_slots = time_slots + not_used_time_list
         for time in time_slots:
             if time_slots.count(time) == 1:
@@ -367,8 +378,17 @@ async def show_time_to_client(message: Message, state: FSMContext):
 async def load_to_db(callback_query: CallbackQuery, state: FSMContext):
     await bot.answer_callback_query(callback_query.id)
     async with state.proxy() as data:
-        db.add_to_timetable(data['trainer'], data['day'], callback_query.data,
-                            db.get_people(callback_query.from_user.id)['name'])
+        if data['day'] in data['general_dict'].keys():
+            for key, value in data['general_dict'].items():
+                if key == data['day']:
+                    update_dict = {callback_query.data: db.get_people(callback_query.from_user.id)['name']}
+                    temp = data['general_dict'].setdefault(key, {})
+                    data['general_dict'][key] = temp | update_dict
+        else:
+            data['general_dict'] = data['general_dict'] | {data['day']: {callback_query.data:
+                                                                             db.get_people(callback_query.from_user.id)[
+                                                                                 'name']}}
+        db.update_schedule(data['trainer'], data['general_dict'])
         await bot.send_message(callback_query.from_user.id,
                                text=f"Ви записані до: {data['name']}.\nНа {data['day']},"
                                     f" о {callback_query.data} годині.", reply_markup=ReplyKeyboardRemove())
@@ -389,7 +409,7 @@ async def show_days_of_week(message: Message, state: FSMContext):
     async with state.proxy() as data:
         data['trainer'] = trainer_id
         data['schedule'] = schedule
-    for day in utils.DAYS_OF_WEEK_DICT.values():
+    for day in text.DAYS_OF_WEEK_DICT.values():
         kb_days_of_week.add(KeyboardButton(day))
     await message.answer("Виберіть дні для запису", reply_markup=kb_days_of_week)
 
@@ -420,14 +440,24 @@ async def change_days_for_standing_schedule(message: Message, state: FSMContext)
 
 async def change_standing_time(message: Message, state: FSMContext):
     async with state.proxy() as data:
+        kb_days_of_week.keyboard.clear()
         time_slots = utils.get_time_slots(data['schedule'])
-        occupied_time_slots = json.loads(db.get_standing_schedule(data['trainer'])[0]['standing_schedule'])
+        occupied_time_slots = db.get_schedule(data['trainer'])
+        occupied_time_slots_list = []
         kb_time_slots = InlineKeyboardMarkup()
-        if occupied_time_slots:
-            pass
+        if type(occupied_time_slots) == list and occupied_time_slots[0]['standing_schedule']:
+            occupied_dict = json.loads(occupied_time_slots[0]['standing_schedule'])
+            for key, value in occupied_dict.items():
+                if key in data['days']:
+                    for k in value.keys():
+                        if k not in occupied_time_slots_list:
+                            occupied_time_slots_list.append(k)
+
         for time in time_slots:
-            kb_time_slots.add(InlineKeyboardButton(time, callback_data=time))
+            if time not in occupied_time_slots_list:
+                kb_time_slots.add(InlineKeyboardButton(text=time, callback_data=time))
         await message.answer("Виберіть час.", reply_markup=kb_time_slots)
+        kb_time_slots.inline_keyboard.clear()
 
 
 @dp.callback_query_handler(state=TrainerStandingScheduleState.standing_schedule_info)
@@ -436,10 +466,131 @@ async def load_standing_schedule_to_db(callback_query: CallbackQuery, state: FSM
     async with state.proxy() as data:
         db.add_standing_schedule(data['trainer'], callback_query.data, data['days'],
                                  db.get_people(callback_query.from_user.id)['name'])
-        await bot.send_message(callback_query.from_user.id, text=f"Ви записані о {callback_query.data}, "
-                                                                 f"{', '.join(data['days']).lower()}",
+        await bot.send_message(callback_query.from_user.id, text=f"Ви записані о {callback_query.data}!\n"
+                                                                 f"Ваші дні для тренувань - "
+                                                                 f"{', '.join(data['days']).lower()}.",
                                reply_markup=ReplyKeyboardRemove())
     await state.finish()
+
+
+@dp.message_handler(commands=["cancel_workout", "cancel_training"])
+async def start_cancel_training_for_client(message: Message, state: FSMContext):
+    await CancelClientTrainingState.client_name.set()
+    async with state.proxy() as data:
+        data['client_name'] = db.get_people(message.from_user.id)['name']
+        data['trainers_name'] = utils.get_trainers_name(data['client_name'])
+        kb_trainers = ReplyKeyboardMarkup(resize_keyboard=True)
+        for el in data['trainers_name']:
+            for name in el.values():
+                kb_trainers.add(KeyboardButton(text=name))
+        await message.answer(text="Виберіть тренера, у якого хочете відмінити тренування.", reply_markup=kb_trainers)
+        kb_trainers.keyboard.clear()
+
+
+@dp.message_handler(state=CancelClientTrainingState.client_name)
+async def select_day_for_cancel_training(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        for el in data['trainers_name']:
+            if message.text in el.values():
+                data['trainers_name'] = el
+                break
+        data["general_dict"] = utils.get_general_dict(list(data['trainers_name'].keys())[0])
+        kb_date_for_cancel = ReplyKeyboardMarkup(resize_keyboard=True)
+        for key, value in data["general_dict"].items():
+            if data['client_name'] in value.values():
+                kb_date_for_cancel.add(KeyboardButton(text=key))
+        await message.answer(text="Виберіть день для відміни тренування.", reply_markup=kb_date_for_cancel)
+        await CancelClientTrainingState.next()
+        kb_date_for_cancel.keyboard.clear()
+
+
+@dp.message_handler(state=CancelClientTrainingState.date)
+async def select_time_for_cancel_training(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        data['day'] = message.text
+        kb_time_for_cancel = ReplyKeyboardMarkup(resize_keyboard=True)
+        for key, value in data["general_dict"].items():
+            if key == message.text:
+                if len(value) > 1:
+                    for time in value.keys():
+                        kb_time_for_cancel.add(KeyboardButton(text=time))
+                else:
+                    kb_time_for_cancel.add(KeyboardButton(text=list(value.keys())[0]))
+        await message.answer(text="Виберіть час.", reply_markup=kb_time_for_cancel)
+        await CancelClientTrainingState.next()
+        kb_time_for_cancel.keyboard.clear()
+
+
+@dp.message_handler(state=CancelClientTrainingState.time)
+async def cancel_training_for_client(message: Message, state: FSMContext):
+    async with state.proxy() as data:
+        if (data['day'] in data['general_dict'] and message.text in data['general_dict'][data['day']]
+                and data['client_name'] in data['general_dict'][data['day']][message.text]):
+            del data['general_dict'][data['day']][message.text]
+        db.update_schedule(list(data['trainers_name'].keys())[0], data['general_dict'])
+    await message.answer(text="Тренування відмінено!", reply_markup=ReplyKeyboardRemove())
+    await state.finish()
+
+
+@dp.message_handler(commands=['change_my_schedule'])
+async def start_cancel_training_for_trainer(message: Message, state: FSMContext):
+    await CancelTrainerTrainingState.date.set()
+    async with state.proxy() as data:
+        data['general_schedule'] = utils.get_general_dict(utils.get_trainer_id(message.from_user.id))
+        kb_date_for_cancel = InlineKeyboardMarkup()
+        if data['general_schedule']:
+            for date in data['general_schedule'].keys():
+                kb_date_for_cancel.add(InlineKeyboardButton(text=date, callback_data=date))
+            await message.answer(text="Виберіть день!", reply_markup=kb_date_for_cancel)
+            kb_date_for_cancel.inline_keyboard.clear()
+        else:
+            await message.answer(text="На даний момент, у вас немає тренувань!")
+            await state.finish()
+
+
+@dp.callback_query_handler(state=CancelTrainerTrainingState.date)
+async def select_day_for_cancel_for_trainer(callback_query: CallbackQuery, state: FSMContext):
+    await bot.answer_callback_query(callback_query.id)
+    async with state.proxy() as data:
+        data['date'] = callback_query.data
+        kb_time_for_cancel = InlineKeyboardMarkup()
+        for date, value in data['general_schedule'].items():
+            if date == data['date']:
+                if len(value) > 1:
+                    for key, val in value.items():
+                        kb_time_for_cancel.add(InlineKeyboardButton(text=key + " - " + val,
+                                                                    callback_data=key + " - " + val))
+                else:
+                    kb_time_for_cancel.add(
+                        InlineKeyboardButton(text=list(value.keys())[0] + " - " + list(value.values())[0],
+                                             callback_data=list(value.keys())[0] + " - " + list(value.values())[0]))
+        await bot.send_message(chat_id=callback_query.from_user.id,
+                               text="Виберіть час і клієнта для відміни тренування!",
+                               reply_markup=kb_time_for_cancel)
+        await CancelTrainerTrainingState.next()
+        kb_time_for_cancel.inline_keyboard.clear()
+
+
+@dp.callback_query_handler(state=CancelTrainerTrainingState.time)
+async def cancel_training_for_trainer(callback_query: CallbackQuery, state: FSMContext):
+    await bot.answer_callback_query(callback_query.id)
+    async with state.proxy() as data:
+        callback_list = callback_query.data.split(" - ")
+        for key, val in data['general_schedule'].items():
+            if key == data['date']:
+                if len(val) > 1:
+                    del data['general_schedule'][data['date']][callback_list[0]]
+                    break
+                else:
+                    del data['general_schedule'][data['date']]
+                    break
+        db.update_schedule(utils.get_trainer_id(callback_query.from_user.id), data['general_schedule'])
+        await bot.send_message(chat_id=callback_query.from_user.id, text="Тренування відмінено успішно!")
+        await bot.send_message(chat_id=db.get_people_chat_id(callback_list[1])['user_id'],
+                               text=f"Тренер - "
+                                    f"{db.get_trainer_name(utils.get_trainer_id(callback_query.from_user.id))['name']}"
+                                    f" відмінив ваше тренування {data['date']} о {callback_list[0]}!")
+        await state.finish()
 
 
 if __name__ == "__main__":

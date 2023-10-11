@@ -5,6 +5,16 @@ HELP_COMMAND = """
 /cancel_workout - відмінити тренування
 """
 
+DAYS_OF_WEEK_DICT = {
+    0: "Понеділок",
+    1: "Вівторок",
+    2: "Середа",
+    3: "Четвер",
+    4: "П'ятниця",
+    5: "Субота",
+    6: "Неділя"
+}
+
 TRAINERS_COMMAND = """
 /change_price - змінити ціну на тренування
 /change_schedule - змінити час роботи
@@ -14,9 +24,10 @@ TRAINERS_COMMAND = """
 /work_out - вибрати собі тренера
 /see_work_schedule - подивитись графік роботи
 /cancel_training - відмінити тренування з тренером
+/change_my_schedule - відмінити клієнта 
 """
 
-CLIENT_COMMANDS_LIST = ["/start", "/help", "/trainer_reg"]
+CLIENT_COMMANDS_LIST = ["/start", "/help", "/trainer_reg", "/cancel_workout"]
 
 TRAINER_COMMANDS_LIST = ["/start", "/change_price", "/change_schedule", "/change_number", "/change_desc",
                          "/change_photo", "/see_work_schedule", "/for_trainers"]
