@@ -42,25 +42,6 @@ def get_next_five_days():
     return days
 
 
-def get_dict(data):
-    py_obj = None
-    if len(data) == 1:
-        py_obj = json.loads(data[0]['schedule'])
-    else:
-        for el in data:
-            py_obj = json.loads(el['schedule'])
-    return py_obj
-
-
-def get_trainer_id(user_id):
-    people_id = db.get_people(user_id)
-    trainer_id = db.get_trainer(people_id['id'])
-    if people_id is None or trainer_id is None:
-        return None
-
-    return trainer_id['person_id']
-
-
 def get_general_dict(trainer_id):
     locale.setlocale(locale.LC_TIME, 'uk_UA.utf8')
     general_schedule = db.get_schedule(trainer_id)
