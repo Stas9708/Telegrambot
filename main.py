@@ -235,7 +235,7 @@ async def change_price_command(message: Message, state: FSMContext):
 async def get_trainer_schedule(message: Message, state: FSMContext):
     await TrainerScheduleState.change_day.set()
     async with state.proxy() as data:
-        data_dict = utils.get_general_dict(db.get_trainer_id(message.from_user.id))
+        data_dict = utils.get_general_dict(db.get_schedule(db.get_trainer_id(message.from_user.id)))
         data['general_dict'] = data_dict
         if data_dict is None:
             await message.answer("Нажаль у вас немає тренувань!")
@@ -355,7 +355,7 @@ async def show_time_to_client(message: Message, state: FSMContext):
         data['day'] = message.text
         time_slots = utils.get_time_slots(data['schedule'], data['day'])
         not_used_time_list = []
-        schedule_dict = utils.get_general_dict(data['trainer'])
+        schedule_dict = utils.get_general_dict(db.get_schedule(data['trainer']))
         data['general_dict'] = schedule_dict
         if schedule_dict:
             if data['day'] in schedule_dict.keys():
@@ -478,7 +478,11 @@ async def start_cancel_training_for_client(message: Message, state: FSMContext):
     await CancelClientTrainingState.client_name.set()
     async with state.proxy() as data:
         data['client_name'] = db.get_people(message.from_user.id)['name']
-        data['trainers_name'] = utils.get_trainers_name(data['client_name'])
+        trainers_id = utils.get_trainers_id(data['client_name'], db.get_schedule())
+        data['trainers_name'] = []
+        for val in trainers_id:
+            data['trainers_name'].append({val: db.get_trainer_name(val)['name']})
+
         kb_trainers = ReplyKeyboardMarkup(resize_keyboard=True)
         for el in data['trainers_name']:
             for name in el.values():
@@ -494,7 +498,7 @@ async def select_day_for_cancel_training(message: Message, state: FSMContext):
             if message.text in el.values():
                 data['trainers_name'] = el
                 break
-        data["general_dict"] = utils.get_general_dict(list(data['trainers_name'].keys())[0])
+        data["general_dict"] = utils.get_general_dict(db.get_schedule(list(data['trainers_name'].keys())[0]))
         kb_date_for_cancel = ReplyKeyboardMarkup(resize_keyboard=True)
         for key, value in data["general_dict"].items():
             if data['client_name'] in value.values():
@@ -536,7 +540,7 @@ async def cancel_training_for_client(message: Message, state: FSMContext):
 async def start_cancel_training_for_trainer(message: Message, state: FSMContext):
     await CancelTrainerTrainingState.date.set()
     async with state.proxy() as data:
-        data['general_schedule'] = utils.get_general_dict(db.get_trainer_id(message.from_user.id))
+        data['general_schedule'] = utils.get_general_dict(db.get_schedule(db.get_trainer_id(message.from_user.id)))
         kb_date_for_cancel = InlineKeyboardMarkup()
         if data['general_schedule']:
             for date in data['general_schedule'].keys():

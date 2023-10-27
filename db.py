@@ -117,9 +117,9 @@ class Database:
             cursor.execute(base_sql, (new_info, trainer_id))
         self.connection.commit()
 
-    def get_schedule(self, trainer_id=""):
+    def get_schedule(self, trainer_id=0):
         with self.connection.cursor() as cursor:
-            if trainer_id == "":
+            if trainer_id == 0:
                 sql = ("SELECT `trainer_id`, `schedule`, `standing_schedule` "
                        "FROM `timetable`")
                 cursor.execute(sql)
@@ -136,22 +136,22 @@ class Database:
     def add_standing_schedule(self, trainer_id, time, days, client_name):
         with self.connection.cursor() as cursor:
             result = self.get_schedule(trainer_id)
-            if type(result) == list and result[0]['standing_schedule'] is not None:
-                current_schedule = json.loads(result[0]['standing_schedule'])
+            if result['standing_schedule']:
+                current_schedule = json.loads(result['standing_schedule'])
             else:
                 current_schedule = {}
 
             for day in days:
-                if len(current_schedule) == 0 or day not in current_schedule.keys():
+                if day not in current_schedule.keys():
                     current_schedule[day] = {time: client_name}
                 else:
-                    current_schedule[str(day)].setdefault(time, client_name)
+                    current_schedule[day].setdefault(time, client_name)
 
             sql = ("INSERT INTO `timetable` (`trainer_id`, `schedule`, `standing_schedule`) "
                    "VALUES (%s, %s, %s) "
                    "ON DUPLICATE KEY UPDATE `standing_schedule` = VALUES(`standing_schedule`)")
             if result:
-                cursor.execute(sql, (trainer_id, result[0]['schedule'], json.dumps(current_schedule)))
+                cursor.execute(sql, (trainer_id, result['schedule'], json.dumps(current_schedule)))
             else:
                 cursor.execute(sql, (trainer_id, json.dumps({}), json.dumps(current_schedule)))
 
