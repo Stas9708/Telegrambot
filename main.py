@@ -81,7 +81,7 @@ class CancelTrainerTrainingState(StatesGroup):
 @dp.message_handler(commands=["start", "help"])
 async def start_command(message: Message):
     if message.text == "/help":
-        if utils.get_trainer_id(message.from_user.id) is None:
+        if db.get_trainer_id(message.from_user.id) is None:
             await message.reply(text=text.HELP_COMMAND, reply_markup=ReplyKeyboardRemove())
         else:
             await message.reply("Так як ви тренер, у вас зовсім інші команди.")
@@ -89,7 +89,7 @@ async def start_command(message: Message):
         result = db.get_people(message.from_user['id'])
         if result is None:
             await message.answer("Виберіть що забажаєте)", reply_markup=kb_start)
-        elif utils.get_trainer_id(message.from_user.id) == result['id']:
+        elif db.get_trainer_id(message.from_user.id) == result['id']:
             await message.answer("Ви зарегестровані як тренер.\nДля того щоб подивитись функціонал тренера введіть - "
                                  "/for_trainers!", reply_markup=ReplyKeyboardRemove())
         else:
@@ -173,7 +173,7 @@ async def load_client_name(message: Message, state: FSMContext):
 
 @dp.message_handler(commands=["change_price", "change_schedule", "change_number", "change_desc", "change_photo",
                               "for_trainers"])
-async def trainer_command(message: Message, state: FSMContext):
+async def trainer_command(message: Message):
     if message.text == "/for_trainers":
         await message.answer(text=text.TRAINERS_COMMAND, reply_markup=ReplyKeyboardRemove())
     elif message.text == "/change_price":
@@ -197,35 +197,35 @@ async def trainer_command(message: Message, state: FSMContext):
 
 @dp.message_handler(state=TrainerChangeInfo.change_price)
 async def change_price_command(message: Message, state: FSMContext):
-    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_price", message.text)
+    db.change_trainer_info(db.get_trainer_id(message.from_user.id), "/change_price", message.text)
     await message.reply("Ціну замінено успішно!")
     await state.finish()
 
 
 @dp.message_handler(state=TrainerChangeInfo.change_schedule)
 async def change_price_command(message: Message, state: FSMContext):
-    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_schedule", message.text)
+    db.change_trainer_info(db.get_trainer_id(message.from_user.id), "/change_schedule", message.text)
     await message.reply("Час роботи замінено успішно.")
     await state.finish()
 
 
 @dp.message_handler(state=TrainerChangeInfo.change_number)
 async def change_price_command(message: Message, state: FSMContext):
-    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_number", message.text)
+    db.change_trainer_info(db.get_trainer_id(message.from_user.id), "/change_number", message.text)
     await message.reply("Номер телефону, замінено успішно.")
     await state.finish()
 
 
 @dp.message_handler(state=TrainerChangeInfo.change_desc)
 async def change_price_command(message: Message, state: FSMContext):
-    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_desc", message.text)
+    db.change_trainer_info(db.get_trainer_id(message.from_user.id), "/change_desc", message.text)
     await message.reply("Резюме замінено успішно.")
     await state.finish()
 
 
 @dp.message_handler(state=TrainerChangeInfo.change_photo, content_types=["photo"])
 async def change_price_command(message: Message, state: FSMContext):
-    db.change_trainer_info(utils.get_trainer_id(message.from_user.id), "/change_photo",
+    db.change_trainer_info(db.get_trainer_id(message.from_user.id), "/change_photo",
                            message.photo[-1].file_id)
     await message.reply("Фото замінено успішно.")
     await state.finish()
@@ -235,7 +235,7 @@ async def change_price_command(message: Message, state: FSMContext):
 async def get_trainer_schedule(message: Message, state: FSMContext):
     await TrainerScheduleState.change_day.set()
     async with state.proxy() as data:
-        data_dict = utils.get_general_dict(utils.get_trainer_id(message.from_user.id))
+        data_dict = utils.get_general_dict(db.get_schedule(db.get_trainer_id(message.from_user.id)))
         data['general_dict'] = data_dict
         if data_dict is None:
             await message.answer("Нажаль у вас немає тренувань!")
@@ -273,14 +273,14 @@ async def work_out_command_exception(message: Message, state: FSMContext):
     await state.finish()
 
 
-@dp.message_handler(lambda message: message.text in ["Потренуватись", "/work_out"])
+@dp.message_handler(lambda message: message.text in ["/work_out", "Вибрати тренера"])
 async def show_trainer(message: Message, state: FSMContext):
-    if message.text in text.CLIENT_COMMANDS_LIST and utils.get_trainer_id(message.from_user.id) is None:
+    if message.text in text.CLIENT_COMMANDS_LIST and db.get_trainer_id(message.from_user.id) is None:
         if message.text in ["/start", "/help"]:
             await start_command(message)
         else:
             await registration(message)
-    elif message.text in text.TRAINER_COMMANDS_LIST and type(utils.get_trainer_id(message.from_user.id)) == int:
+    elif message.text in text.TRAINER_COMMANDS_LIST and type(db.get_trainer_id(message.from_user.id)) == int:
         if message.text == "/start":
             await start_command(message)
         else:
@@ -289,7 +289,7 @@ async def show_trainer(message: Message, state: FSMContext):
         await TrainerChoiceState.trainer_info.set()
         async with state.proxy() as data:
             data['count'] = 0
-            result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
+            result = db.get_trainer_info(db.get_trainer_id(message.from_user.id), data['count'])
             if result is None:
                 await message.answer("Нажаль, на данний момент тренерів немає!")
                 await state.finish()
@@ -307,13 +307,13 @@ async def show_trainer(message: Message, state: FSMContext):
 @dp.message_handler(lambda message: message.text in ["next >", *text.TRAINER_COMMANDS_LIST,
                                                      *text.CLIENT_COMMANDS_LIST], state=TrainerChoiceState.trainer_info)
 async def trainer_pagination(message: Message, state: FSMContext):
-    if message.text in text.CLIENT_COMMANDS_LIST and utils.get_trainer_id(message.from_user.id) is None:
+    if message.text in text.CLIENT_COMMANDS_LIST and db.get_trainer_id(message.from_user.id) is None:
         if message.text in ["/start", "/help"]:
             await start_command(message)
         else:
             await registration(message)
         await state.finish()
-    elif message.text in text.TRAINER_COMMANDS_LIST and type(utils.get_trainer_id(message.from_user.id)) == int:
+    elif message.text in text.TRAINER_COMMANDS_LIST and type(db.get_trainer_id(message.from_user.id)) == int:
         if message.text == "/start":
             await start_command(message)
         else:
@@ -321,7 +321,7 @@ async def trainer_pagination(message: Message, state: FSMContext):
         await state.finish()
     else:
         async with state.proxy() as data:
-            result = db.get_trainers(data['count'], utils.get_trainer_id(message.from_user.id))
+            result = db.get_trainer_info(db.get_trainer_id(message.from_user.id), data['count'])
             if result['photo'] is None:
                 await message.answer("Нажаль тренерів більше немає.")
                 await start_command(message)
@@ -355,7 +355,7 @@ async def show_time_to_client(message: Message, state: FSMContext):
         data['day'] = message.text
         time_slots = utils.get_time_slots(data['schedule'], data['day'])
         not_used_time_list = []
-        schedule_dict = utils.get_general_dict(data['trainer'])
+        schedule_dict = utils.get_general_dict(db.get_schedule(data['trainer']))
         data['general_dict'] = schedule_dict
         if schedule_dict:
             if data['day'] in schedule_dict.keys():
@@ -445,8 +445,8 @@ async def change_standing_time(message: Message, state: FSMContext):
         occupied_time_slots = db.get_schedule(data['trainer'])
         occupied_time_slots_list = []
         kb_time_slots = InlineKeyboardMarkup()
-        if type(occupied_time_slots) == list and occupied_time_slots[0]['standing_schedule']:
-            occupied_dict = json.loads(occupied_time_slots[0]['standing_schedule'])
+        if occupied_time_slots['standing_schedule']:
+            occupied_dict = json.loads(occupied_time_slots['standing_schedule'])
             for key, value in occupied_dict.items():
                 if key in data['days']:
                     for k in value.keys():
@@ -478,7 +478,11 @@ async def start_cancel_training_for_client(message: Message, state: FSMContext):
     await CancelClientTrainingState.client_name.set()
     async with state.proxy() as data:
         data['client_name'] = db.get_people(message.from_user.id)['name']
-        data['trainers_name'] = utils.get_trainers_name(data['client_name'])
+        trainers_id = utils.get_trainers_id(data['client_name'], db.get_schedule())
+        data['trainers_name'] = []
+        for val in trainers_id:
+            data['trainers_name'].append({val: db.get_trainer_name(val)['name']})
+
         kb_trainers = ReplyKeyboardMarkup(resize_keyboard=True)
         for el in data['trainers_name']:
             for name in el.values():
@@ -494,7 +498,7 @@ async def select_day_for_cancel_training(message: Message, state: FSMContext):
             if message.text in el.values():
                 data['trainers_name'] = el
                 break
-        data["general_dict"] = utils.get_general_dict(list(data['trainers_name'].keys())[0])
+        data["general_dict"] = utils.get_general_dict(db.get_schedule(list(data['trainers_name'].keys())[0]))
         kb_date_for_cancel = ReplyKeyboardMarkup(resize_keyboard=True)
         for key, value in data["general_dict"].items():
             if data['client_name'] in value.values():
@@ -536,7 +540,7 @@ async def cancel_training_for_client(message: Message, state: FSMContext):
 async def start_cancel_training_for_trainer(message: Message, state: FSMContext):
     await CancelTrainerTrainingState.date.set()
     async with state.proxy() as data:
-        data['general_schedule'] = utils.get_general_dict(utils.get_trainer_id(message.from_user.id))
+        data['general_schedule'] = utils.get_general_dict(db.get_schedule(db.get_trainer_id(message.from_user.id)))
         kb_date_for_cancel = InlineKeyboardMarkup()
         if data['general_schedule']:
             for date in data['general_schedule'].keys():
@@ -584,11 +588,11 @@ async def cancel_training_for_trainer(callback_query: CallbackQuery, state: FSMC
                 else:
                     del data['general_schedule'][data['date']]
                     break
-        db.update_schedule(utils.get_trainer_id(callback_query.from_user.id), data['general_schedule'])
+        db.update_schedule(db.get_trainer_id(callback_query.from_user.id), data['general_schedule'])
         await bot.send_message(chat_id=callback_query.from_user.id, text="Тренування відмінено успішно!")
         await bot.send_message(chat_id=db.get_people_chat_id(callback_list[1])['user_id'],
                                text=f"Тренер - "
-                                    f"{db.get_trainer_name(utils.get_trainer_id(callback_query.from_user.id))['name']}"
+                                    f"{db.get_trainer_name(db.get_trainer_id(callback_query.from_user.id))['name']}"
                                     f" відмінив ваше тренування {data['date']} о {callback_list[0]}!")
         await state.finish()
 
