@@ -41,16 +41,15 @@ def get_next_five_days():
 
 def get_general_dict(all_schedule):
     locale.setlocale(locale.LC_TIME, 'uk_UA.utf8')
-    general_schedule = all_schedule
     days = get_next_five_days()
     general_dict = {}
     standing_schedule = {}
     schedule = {}
-    if general_schedule:
-        if type(general_schedule['schedule']) == str:
-            schedule = json.loads(general_schedule['schedule'])
-        if type(general_schedule['standing_schedule']) == str:
-            standing_schedule = json.loads(general_schedule['standing_schedule'])
+    if all_schedule:
+        if isinstance(all_schedule['schedule'], str):
+            schedule = json.loads(all_schedule['schedule'])
+        if isinstance(all_schedule['standing_schedule'], str):
+            standing_schedule = json.loads(all_schedule['standing_schedule'])
 
     if schedule:
         day_now = datetime.date.today()
@@ -75,8 +74,7 @@ def get_general_dict(all_schedule):
 
 def get_trainers_id(client_name, trainer_info):
     trainers_id_list = []
-    trainers_id = trainer_info
-    for el in trainers_id:
+    for el in trainer_info:
         temp = json.loads(el['schedule']) | json.loads(el['standing_schedule'])
         for value in temp.values():
             if client_name in value.values() and el['trainer_id'] not in trainers_id_list:

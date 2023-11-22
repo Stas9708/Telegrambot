@@ -117,9 +117,9 @@ class Database:
             cursor.execute(base_sql, (new_info, trainer_id))
         self.connection.commit()
 
-    def get_schedule(self, trainer_id=0):
+    def get_schedule(self, trainer_id=""):
         with self.connection.cursor() as cursor:
-            if trainer_id == 0:
+            if trainer_id == "":
                 sql = ("SELECT `trainer_id`, `schedule`, `standing_schedule` "
                        "FROM `timetable`")
                 cursor.execute(sql)
