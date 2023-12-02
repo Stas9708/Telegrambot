@@ -14,3 +14,28 @@ services:
       MYSQL_ROOT_PASSWORD: 123456
       MYSQL_USER: root
       MYSQL_ROOT_HOST: "%"
+    networks:
+      - test_net
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "443:433"
+      - "80:80"
+      - "88:88"
+      - "8443:8443"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    links:
+      - mysql
+    networks:
+      - test_net
+    environment:
+      DB_HOST: mysql
+
+networks:
+  test_net:
+    driver: bridge
